@@ -112,7 +112,7 @@
     <canvas id="game"></canvas>
     <div id="hud">
       <div class="chip">⭐ <span id="scoreVal">0</span></div>
-      <div class="chip">🏁 <span id="lapVal">Lap 1/2</span></div>
+      <div class="chip">🏁 <span id="lapVal">Lap 1/3</span></div>
     </div>
     <div id="toast"></div>
 
@@ -172,7 +172,7 @@
   const TRACK_W = 130;                // half track width
   const OUTER_A = TRACK_A + TRACK_W, OUTER_B = TRACK_B + TRACK_W;
   const INNER_A = TRACK_A - TRACK_W, INNER_B = TRACK_B - TRACK_W;
-  const LAPS_TO_WIN = 2;
+  const LAPS_TO_WIN = 3;
 
   const MAX_SPEED = 3.8;
   const OFFTRACK_MAX_SPEED = 1.9;
@@ -586,11 +586,13 @@
     }
   }
 
+  const CAR_SCALE = 1.45;
   function drawCar(){
     const p = toScreen(car.x, car.y);
     ctx.save();
     ctx.translate(p.sx, p.sy);
     ctx.rotate(car.angle);
+    ctx.scale(CAR_SCALE, CAR_SCALE);
     // shadow
     ctx.fillStyle = 'rgba(0,0,0,.2)';
     ctx.beginPath(); ctx.ellipse(0, 3, 20, 12, 0, 0, Math.PI*2); ctx.fill();
