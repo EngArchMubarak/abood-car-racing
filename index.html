@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Abood's Jungle Race</title>
+<style>
+  html,body{
+    margin:0; padding:0; height:100%; width:100%;
+    overflow:hidden; background:#111;
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    touch-action:none;
+    -webkit-user-select:none; user-select:none;
+    -webkit-touch-callout:none;
+  }
+  #game-wrap{
+    position:fixed; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    background:#111;
+  }
+  #stage{
+    position:relative;
+  }
+  canvas{
+    width:100%; height:100%;
+    display:block;
+    background:#4caf50;
+    border-radius:0;
+  }
+  #hud{
+    position:absolute; top:10px; left:10px; right:10px;
+    display:flex; justify-content:space-between;
+    color:#fff; font-weight:800; text-shadow:0 2px 3px rgba(0,0,0,.5);
+    font-size:clamp(14px,2.4vw,22px);
+    pointer-events:none;
+  }
+  #hud .chip{
+    background:rgba(0,0,0,.35);
+    padding:6px 12px; border-radius:12px;
+    display:flex; gap:8px; align-items:center;
+  }
+  #toast{
+    position:absolute; top:64px; left:50%;
+    transform:translateX(-50%) translateY(-8px);
+    background:rgba(255,255,255,.95); color:#4a3420; font-weight:700;
+    padding:10px 22px; border-radius:16px;
+    font-size:clamp(13px,2.6vw,19px);
+    box-shadow:0 6px 16px rgba(0,0,0,.25);
+    opacity:0; pointer-events:none; max-width:82%; text-align:center;
+    transition:opacity .5s ease, transform .5s ease;
+  }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay{
+    position:absolute; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:18px;
+    background:rgba(10,40,20,.72);
+    color:#fff; text-align:center;
+    padding:20px; box-sizing:border-box;
+  }
+  .overlay.hidden{display:none;}
+  .overlay h1{
+    margin:0; font-size:clamp(28px,6vw,52px);
+    text-shadow:0 3px 0 rgba(0,0,0,.35);
+  }
+  .overlay p{ margin:0; font-size:clamp(14px,2.6vw,20px); opacity:.9; max-width:520px; }
+  .btn{
+    font-size:clamp(16px,3vw,22px);
+    font-weight:800;
+    padding:14px 34px;
+    border-radius:16px;
+    border:none;
+    background:linear-gradient(#ffd94a,#ffb300);
+    color:#5a3900;
+    box-shadow:0 6px 0 #b87d00, 0 10px 18px rgba(0,0,0,.35);
+    cursor:pointer;
+    touch-action:manipulation;
+  }
+  .btn:active{ transform:translateY(4px); box-shadow:0 2px 0 #b87d00; }
+  #controls{
+    position:absolute; left:0; right:0; bottom:0;
+    display:flex; justify-content:space-between; align-items:flex-end;
+    padding:16px; box-sizing:border-box;
+    pointer-events:none;
+  }
+  .pad{ display:flex; gap:14px; pointer-events:auto; }
+  .ctrl-btn{
+    width:min(18vw,84px); height:min(18vw,84px);
+    border-radius:50%;
+    background:rgba(255,255,255,.25);
+    border:3px solid rgba(255,255,255,.55);
+    color:#fff; font-size:clamp(22px,4.4vw,32px);
+    display:flex; align-items:center; justify-content:center;
+    backdrop-filter:blur(2px);
+    touch-action:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .ctrl-btn.active{ background:rgba(255,255,255,.5); }
+  #gas-btn{
+    width:min(24vw,110px); height:min(24vw,110px);
+    font-size:clamp(13px,2.6vw,18px);
+    font-weight:800;
+    background:rgba(255,120,60,.35);
+    border-color:rgba(255,170,120,.7);
+  }
+  #gas-btn.active{ background:rgba(255,120,60,.65); }
+</style>
+</head>
+<body>
+<div id="game-wrap">
+  <div id="stage">
+    <canvas id="game"></canvas>
+    <div id="hud">
+      <div class="chip">⭐ <span id="scoreVal">0</span></div>
+      <div class="chip">🏁 <span id="lapVal">Lap 1/2</span></div>
+    </div>
+    <div id="toast"></div>
+
+    <div id="controls">
+      <div class="pad">
+        <div class="ctrl-btn" id="btn-left">◀</div>
+        <div class="ctrl-btn" id="btn-right">▶</div>
+      </div>
+      <div class="pad">
+        <div class="ctrl-btn" id="gas-btn">GAS</div>
+      </div>
+    </div>
+
+    <div class="overlay" id="start-overlay">
+      <h1>🐒 Abood's Jungle Race 🐘</h1>
+      <p>Press GAS to go, and steer with ◀ ▶. Drive around the jungle track — there's no rush, and you can't crash!</p>
+      <button class="btn" id="play-btn">▶ Play</button>
+      <p style="font-size:13px;opacity:.7;">Arrow keys / WASD + Space on a computer, or the on-screen buttons on a touch device.</p>
+    </div>
+
+    <div class="overlay hidden" id="win-overlay">
+      <h1>🏁 You won the race, Abood! 🏁</h1>
+      <p id="win-score"></p>
+      <button class="btn" id="win-again-btn">Race Again</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const HERO_NAME = "Abood";
+
+  // ---------- Canvas setup ----------
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const W = 960, H = 540; // logical resolution
+  canvas.width = W; canvas.height = H;
+
+  const stage = document.getElementById('stage');
+  function fitStage(){
+    const wrapW = window.innerWidth, wrapH = window.innerHeight;
+    const targetRatio = W / H;
+    let w = Math.min(wrapW, 1000);
+    let h = w / targetRatio;
+    if(h > wrapH){ h = wrapH; w = h * targetRatio; }
+    stage.style.width = w + 'px';
+    stage.style.height = h + 'px';
+  }
+  window.addEventListener('resize', fitStage);
+  fitStage();
+
+  // Slow, gentle, forgiving physics — built for a first-time 4-year-old driver.
+  const CX = 950, CY = 650;           // track center, world space
+  const TRACK_A = 650, TRACK_B = 380; // centerline ellipse radii
+  const TRACK_W = 130;                // half track width
+  const OUTER_A = TRACK_A + TRACK_W, OUTER_B = TRACK_B + TRACK_W;
+  const INNER_A = TRACK_A - TRACK_W, INNER_B = TRACK_B - TRACK_W;
+  const LAPS_TO_WIN = 2;
+
+  const MAX_SPEED = 3.8;
+  const OFFTRACK_MAX_SPEED = 1.9;
+  const ACCEL = 0.09;
+  const COAST_FRICTION = 0.045;
+  const OFFTRACK_EXTRA_FRICTION = 0.05;
+  const TURN_RATE = 0.045;
+
+  function inEllipse(x, y, a, b){
+    const dx = (x - CX) / a, dy = (y - CY) / b;
+    return dx*dx + dy*dy <= 1;
+  }
+  function onTrack(x, y){
+    return inEllipse(x, y, OUTER_A, OUTER_B) && !inEllipse(x, y, INNER_A, INNER_B);
+  }
+
+  // start position: top of track, facing right (the direction of travel)
+  const START_ANGLE = -Math.PI/2;
+  function trackPoint(angle, a, b){
+    return { x: CX + a*Math.cos(angle), y: CY + b*Math.sin(angle) };
+  }
+  const startPos = trackPoint(START_ANGLE, TRACK_A, TRACK_B);
+
+  // ---------- Decorations ----------
+  function buildDecor(){
+    const trees = [];
+    const treeCount = 26;
+    for(let i=0;i<treeCount;i++){
+      const ang = (i/treeCount) * Math.PI*2;
+      const p = trackPoint(ang, OUTER_A + 55 + (i%3)*18, OUTER_B + 55 + (i%3)*18);
+      trees.push({x:p.x, y:p.y, scale: 0.8 + (i%3)*0.25, sway: Math.random()*Math.PI*2});
+    }
+    // a few trees in the infield too
+    for(let i=0;i<8;i++){
+      const ang = (i/8) * Math.PI*2 + 0.3;
+      const p = trackPoint(ang, INNER_A - 40, INNER_B - 40);
+      trees.push({x:p.x, y:p.y, scale: 0.7, sway: Math.random()*Math.PI*2});
+    }
+
+    const animalTypes = ['elephant','giraffe','monkey'];
+    const animals = [];
+    const animalCount = 9;
+    for(let i=0;i<animalCount;i++){
+      const ang = (i/animalCount) * Math.PI*2 + 0.15;
+      const p = trackPoint(ang, OUTER_A + 30, OUTER_B + 30);
+      animals.push({x:p.x, y:p.y, type: animalTypes[i%3], bob: Math.random()*Math.PI*2});
+    }
+
+    const stars = [];
+    const starCount = 14;
+    for(let i=0;i<starCount;i++){
+      const ang = (i/starCount) * Math.PI*2 + 0.1;
+      const p = trackPoint(ang, TRACK_A, TRACK_B);
+      stars.push({x:p.x, y:p.y, taken:false});
+    }
+
+    return { trees, animals, stars };
+  }
+  let decor = buildDecor();
+
+  // ---------- Car ----------
+  function freshCar(){
+    return {
+      x: startPos.x, y: startPos.y,
+      angle: 0, // facing right
+      speed: 0,
+      angleAccum: 0,
+      lastAngle: START_ANGLE,
+    };
+  }
+  let car = freshCar();
+  let score = 0;
+  let lap = 1;
+  let state = 'start'; // start | playing | win
+  let elapsed = 0;
+  let seen = {};
+
+  function resetProgressFlags(){
+    seen = {gas:false, steer:false, offtrack:false, star:false, lap:false};
+  }
+  resetProgressFlags();
+
+  // ---------- Gentle toast messages ----------
+  const toastEl = document.getElementById('toast');
+  let toastQueue = [];
+  let toastBusy = false;
+  function toast(msg){
+    toastQueue.push(msg);
+    if(!toastBusy) nextToast();
+  }
+  function nextToast(){
+    if(toastQueue.length === 0){ toastBusy = false; return; }
+    toastBusy = true;
+    toastEl.textContent = toastQueue.shift();
+    toastEl.classList.add('show');
+    setTimeout(()=>{
+      toastEl.classList.remove('show');
+      setTimeout(nextToast, 400);
+    }, 2400);
+  }
+
+  // ---------- Input ----------
+  const keys = {left:false, right:false, gas:false};
+
+  window.addEventListener('keydown', e=>{
+    if(['ArrowLeft','a','A'].includes(e.key)) keys.left = true;
+    if(['ArrowRight','d','D'].includes(e.key)) keys.right = true;
+    if(['ArrowUp','w','W',' '].includes(e.key)){ keys.gas = true; e.preventDefault(); }
+  });
+  window.addEventListener('keyup', e=>{
+    if(['ArrowLeft','a','A'].includes(e.key)) keys.left = false;
+    if(['ArrowRight','d','D'].includes(e.key)) keys.right = false;
+    if(['ArrowUp','w','W',' '].includes(e.key)) keys.gas = false;
+  });
+
+  function bindHold(el, onDown, onUp){
+    const down = e=>{ e.preventDefault(); el.classList.add('active'); onDown(); };
+    const up = e=>{ e.preventDefault(); el.classList.remove('active'); onUp(); };
+    el.addEventListener('touchstart', down, {passive:false});
+    el.addEventListener('touchend', up, {passive:false});
+    el.addEventListener('touchcancel', up, {passive:false});
+    el.addEventListener('mousedown', down);
+    el.addEventListener('mouseup', up);
+    el.addEventListener('mouseleave', up);
+  }
+  bindHold(document.getElementById('btn-left'), ()=>keys.left=true, ()=>keys.left=false);
+  bindHold(document.getElementById('btn-right'), ()=>keys.right=true, ()=>keys.right=false);
+  bindHold(document.getElementById('gas-btn'), ()=>keys.gas=true, ()=>keys.gas=false);
+
+  // ---------- Overlays ----------
+  const startOverlay = document.getElementById('start-overlay');
+  const winOverlay = document.getElementById('win-overlay');
+  const scoreVal = document.getElementById('scoreVal');
+  const lapVal = document.getElementById('lapVal');
+
+  function showOnly(el){
+    [startOverlay, winOverlay].forEach(o=> o.classList.toggle('hidden', o!==el));
+  }
+
+  document.getElementById('play-btn').addEventListener('click', startGame);
+  document.getElementById('win-again-btn').addEventListener('click', startGame);
+
+  function startGame(){
+    decor = buildDecor();
+    car = freshCar();
+    score = 0; lap = 1; elapsed = 0;
+    resetProgressFlags();
+    updateHud();
+    state = 'playing';
+    [startOverlay, winOverlay].forEach(o=>o.classList.add('hidden'));
+  }
+
+  function updateHud(){
+    scoreVal.textContent = score;
+    lapVal.textContent = `Lap ${Math.min(lap, LAPS_TO_WIN)}/${LAPS_TO_WIN}`;
+  }
+
+  // ---------- Update ----------
+  function normalizeAngle(a){
+    while(a > Math.PI) a -= Math.PI*2;
+    while(a < -Math.PI) a += Math.PI*2;
+    return a;
+  }
+
+  function update(dt){
+    if(state !== 'playing') return;
+    elapsed += dt;
+
+    if(keys.left){ car.angle -= TURN_RATE; if(!seen.steer){ seen.steer=true; toast("Nice steering!"); } }
+    if(keys.right){ car.angle += TURN_RATE; if(!seen.steer){ seen.steer=true; toast("Nice steering!"); } }
+
+    const track = onTrack(car.x, car.y);
+    const cap = track ? MAX_SPEED : OFFTRACK_MAX_SPEED;
+
+    if(keys.gas){
+      car.speed = Math.min(car.speed + ACCEL, cap);
+      if(!seen.gas){ seen.gas = true; toast("Vroom! Off you go!"); }
+    } else {
+      car.speed = Math.max(car.speed - COAST_FRICTION, 0);
+    }
+    if(!track){
+      car.speed = Math.max(car.speed - OFFTRACK_EXTRA_FRICTION, 0);
+      car.speed = Math.min(car.speed, cap);
+      if(!seen.offtrack){ seen.offtrack = true; toast("Careful, that's the grass — it's a bit slippery!"); }
+    }
+
+    car.x += Math.cos(car.angle) * car.speed;
+    car.y += Math.sin(car.angle) * car.speed;
+
+    // keep the car from wandering too far into the jungle
+    const farA = OUTER_A + 140, farB = OUTER_B + 140;
+    if(!inEllipse(car.x, car.y, farA, farB)){
+      const ang = Math.atan2((car.y-CY)/farB, (car.x-CX)/farA);
+      const p = trackPoint(ang, farA, farB);
+      car.x = p.x; car.y = p.y;
+      car.speed *= 0.5;
+    }
+
+    // lap tracking
+    const curAngle = Math.atan2((car.y-CY)/TRACK_B, (car.x-CX)/TRACK_A);
+    const delta = normalizeAngle(curAngle - car.lastAngle);
+    car.angleAccum += delta;
+    car.lastAngle = curAngle;
+    const lapsDone = Math.floor(car.angleAccum / (Math.PI*2));
+    if(lapsDone + 1 > lap && lapsDone + 1 <= LAPS_TO_WIN){
+      lap = lapsDone + 1;
+      updateHud();
+      if(!seen.lap){ seen.lap = true; toast(`Lap ${lap-1} done! Keep racing!`); }
+      else toast(`Lap ${lap-1} done! Keep racing!`);
+    }
+
+    // stars
+    for(const s of decor.stars){
+      if(s.taken) continue;
+      const dx = s.x - car.x, dy = s.y - car.y;
+      if(dx*dx + dy*dy < 32*32){
+        s.taken = true; score += 10; updateHud();
+        if(!seen.star){ seen.star = true; toast("⭐ You found a star!"); }
+      }
+    }
+
+    // win
+    if(lapsDone >= LAPS_TO_WIN){
+      state = 'win';
+      document.getElementById('win-score').textContent =
+        `${HERO_NAME} finished ${LAPS_TO_WIN} laps and collected ${score} stars!`;
+      showOnly(winOverlay);
+    }
+  }
+
+  // ---------- Drawing ----------
+  let camX = 0, camY = 0;
+  function drawJungleGround(){
+    ctx.fillStyle = '#4caf50';
+    ctx.fillRect(0,0,W,H);
+    // dappled patches for texture
+    ctx.fillStyle = 'rgba(60,140,60,.35)';
+    for(let i=0;i<18;i++){
+      const px = ((i*137 - camX*0.6) % (W+200)) - 100;
+      const py = ((i*211 - camY*0.6) % (H+200)) - 100;
+      ctx.beginPath();
+      ctx.ellipse(px, py, 50, 30, 0, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  function toScreen(x, y){ return { sx: x - camX + W/2, sy: y - camY + H/2 }; }
+
+  function drawEllipsePath(a, b){
+    ctx.beginPath();
+    const s0 = toScreen(CX + a, CY);
+    ctx.moveTo(s0.sx, s0.sy);
+    for(let i=1;i<=64;i++){
+      const t = (i/64)*Math.PI*2;
+      const p = toScreen(CX + a*Math.cos(t), CY + b*Math.sin(t));
+      ctx.lineTo(p.sx, p.sy);
+    }
+    ctx.closePath();
+  }
+
+  function drawTrack(){
+    // dirt outer, grass infield
+    ctx.fillStyle = '#c9a06a';
+    drawEllipsePath(OUTER_A, OUTER_B);
+    ctx.fill();
+    ctx.fillStyle = '#3f9142';
+    drawEllipsePath(INNER_A, INNER_B);
+    ctx.fill();
+
+    // dashed centerline
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,.75)';
+    ctx.lineWidth = 4;
+    ctx.setLineDash([16, 14]);
+    drawEllipsePath(TRACK_A, TRACK_B);
+    ctx.stroke();
+    ctx.restore();
+
+    // finish line (checkered gate at top of track)
+    const p1 = toScreen(CX, CY - (TRACK_B + TRACK_W));
+    const p2 = toScreen(CX, CY - (TRACK_B - TRACK_W));
+    const segs = 8;
+    for(let i=0;i<segs;i++){
+      const t0 = i/segs, t1 = (i+1)/segs;
+      ctx.fillStyle = i%2===0 ? '#222' : '#fff';
+      const y0 = p1.sy + (p2.sy-p1.sy)*t0;
+      const y1 = p1.sy + (p2.sy-p1.sy)*t1;
+      ctx.fillRect(p1.sx - 6, y0, 12, y1-y0);
+    }
+  }
+
+  function drawTree(x, y, scale, sway, t){
+    const p = toScreen(x, y);
+    if(p.sx < -60 || p.sx > W+60 || p.sy < -60 || p.sy > H+60) return;
+    const s = scale;
+    const swayX = Math.sin(t*1.2 + sway) * 2 * s;
+    ctx.fillStyle = '#7a4a26';
+    ctx.fillRect(p.sx - 5*s, p.sy - 6*s, 10*s, 22*s);
+    ctx.fillStyle = '#2e8b3d';
+    ctx.beginPath();
+    ctx.arc(p.sx + swayX, p.sy - 24*s, 20*s, 0, Math.PI*2);
+    ctx.arc(p.sx - 14*s + swayX, p.sy - 14*s, 14*s, 0, Math.PI*2);
+    ctx.arc(p.sx + 14*s + swayX, p.sy - 14*s, 14*s, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  function drawStar(x, y, t){
+    const p = toScreen(x, y);
+    if(p.sx < -20 || p.sx > W+20 || p.sy < -20 || p.sy > H+20) return;
+    const bob = Math.sin(t*3 + x) * 3;
+    ctx.fillStyle = '#ffd94a';
+    ctx.beginPath();
+    for(let i=0;i<5;i++){
+      const ang = -Math.PI/2 + i*(Math.PI*2/5);
+      const angIn = ang + Math.PI/5;
+      const ox = p.sx + Math.cos(ang)*11, oy = p.sy+bob + Math.sin(ang)*11;
+      const ix = p.sx + Math.cos(angIn)*5, iy = p.sy+bob + Math.sin(angIn)*5;
+      if(i===0) ctx.moveTo(ox,oy); else ctx.lineTo(ox,oy);
+      ctx.lineTo(ix,iy);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#b8860b';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  function drawAnimal(a, t){
+    const p = toScreen(a.x, a.y);
+    if(p.sx < -60 || p.sx > W+60 || p.sy < -60 || p.sy > H+60) return;
+    const bob = Math.sin(t*2.4 + a.bob) * 3;
+    const sx = p.sx, sy = p.sy + bob;
+
+    if(a.type === 'elephant'){
+      ctx.fillStyle = '#9aa3ac';
+      ctx.beginPath(); ctx.ellipse(sx, sy, 20, 15, 0, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(sx-14, sy-8, 9, 11, 0, 0, Math.PI*2); ctx.fill(); // ear
+      ctx.beginPath(); ctx.ellipse(sx+14, sy-8, 9, 11, 0, 0, Math.PI*2); ctx.fill(); // ear
+      ctx.beginPath(); ctx.arc(sx, sy-10, 10, 0, Math.PI*2); ctx.fill(); // head
+      ctx.strokeStyle = '#9aa3ac'; ctx.lineWidth = 5; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(sx, sy-6); ctx.quadraticCurveTo(sx+6, sy+6, sx+3, sy+14); ctx.stroke(); // trunk
+      ctx.fillStyle = '#222';
+      ctx.beginPath(); ctx.arc(sx-4, sy-12, 1.6, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(sx+4, sy-12, 1.6, 0, Math.PI*2); ctx.fill();
+    } else if(a.type === 'giraffe'){
+      ctx.fillStyle = '#e8b64a';
+      ctx.fillRect(sx-8, sy, 16, 14); // body
+      ctx.fillRect(sx-5, sy-30, 8, 32); // neck
+      ctx.beginPath(); ctx.arc(sx-1, sy-32, 8, 0, Math.PI*2); ctx.fill(); // head
+      ctx.fillStyle = '#8a5a2b';
+      [[sx-3,sy+4],[sx+2,sy+9],[sx-6,sy-20],[sx+3,sy-26]].forEach(([px,py])=>{
+        ctx.beginPath(); ctx.arc(px,py,2.4,0,Math.PI*2); ctx.fill();
+      });
+      ctx.fillStyle = '#8a5a2b';
+      ctx.fillRect(sx-6, sy-40, 2, 6); ctx.fillRect(sx+2, sy-40, 2, 6); // horns
+      ctx.fillStyle = '#222';
+      ctx.beginPath(); ctx.arc(sx+3, sy-34, 1.4, 0, Math.PI*2); ctx.fill();
+    } else { // monkey
+      ctx.fillStyle = '#7a4a2e';
+      ctx.beginPath(); ctx.ellipse(sx, sy+4, 11, 12, 0, 0, Math.PI*2); ctx.fill(); // body
+      ctx.beginPath(); ctx.arc(sx, sy-10, 9, 0, Math.PI*2); ctx.fill(); // head
+      ctx.fillStyle = '#f2cfa0';
+      ctx.beginPath(); ctx.ellipse(sx, sy-8, 5.5, 6, 0, 0, Math.PI*2); ctx.fill(); // face
+      ctx.beginPath(); ctx.arc(sx-8, sy-12, 3.5, 0, Math.PI*2); ctx.fill(); // ear
+      ctx.beginPath(); ctx.arc(sx+8, sy-12, 3.5, 0, Math.PI*2); ctx.fill(); // ear
+      ctx.fillStyle = '#222';
+      ctx.beginPath(); ctx.arc(sx-2, sy-9, 1.3, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(sx+2, sy-9, 1.3, 0, Math.PI*2); ctx.fill();
+      // waving arm
+      ctx.strokeStyle = '#7a4a2e'; ctx.lineWidth = 4; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(sx+9, sy); ctx.lineTo(sx+15, sy-10+Math.sin(t*6+a.bob)*4); ctx.stroke();
+    }
+  }
+
+  function drawCar(){
+    const p = toScreen(car.x, car.y);
+    ctx.save();
+    ctx.translate(p.sx, p.sy);
+    ctx.rotate(car.angle);
+    // shadow
+    ctx.fillStyle = 'rgba(0,0,0,.2)';
+    ctx.beginPath(); ctx.ellipse(0, 3, 20, 12, 0, 0, Math.PI*2); ctx.fill();
+    // body
+    ctx.fillStyle = '#ff5a4a';
+    ctx.beginPath();
+    ctx.moveTo(18, 0);
+    ctx.lineTo(9, -11);
+    ctx.lineTo(-16, -11);
+    ctx.lineTo(-16, 11);
+    ctx.lineTo(9, 11);
+    ctx.closePath();
+    ctx.fill();
+    // cockpit
+    ctx.fillStyle = '#ffe07a';
+    ctx.beginPath(); ctx.ellipse(2, 0, 8, 7, 0, 0, Math.PI*2); ctx.fill();
+    // wheels
+    ctx.fillStyle = '#222';
+    ctx.fillRect(-14, -14, 8, 5);
+    ctx.fillRect(-14, 9, 8, 5);
+    ctx.fillRect(6, -14, 8, 5);
+    ctx.fillRect(6, 9, 8, 5);
+    ctx.restore();
+  }
+
+  function draw(){
+    camX = car.x; camY = car.y;
+    drawJungleGround();
+    drawTrack();
+    decor.trees.forEach(tr => drawTree(tr.x, tr.y, tr.scale, tr.sway, elapsed));
+    decor.stars.forEach(s => { if(!s.taken) drawStar(s.x, s.y, elapsed); });
+    decor.animals.forEach(a => drawAnimal(a, elapsed));
+    if(state==='playing' || state==='win') drawCar();
+  }
+
+  // ---------- Main loop ----------
+  let lastT = performance.now();
+  function loop(t){
+    const dt = Math.min((t - lastT)/1000, 1/30);
+    lastT = t;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  document.title = `${HERO_NAME}'s Jungle Race`;
+})();
+</script>
+</body>
+</html>
