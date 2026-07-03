@@ -167,11 +167,9 @@
   const COAST_FRICTION = 0.045;
   const TURN_RATE = 0.022;
 
-  // Rival racer — "Melo the Monkey" — a friendly AI that keeps pace nearby
-  // but is tuned to never truly beat Abood, just to make it feel like a race.
+  // Rival racer — "Melo the Monkey" — always chases right behind Abood.
   const RIVAL_LANE_A = TRACK_A - 70, RIVAL_LANE_B = TRACK_B - 70;
-  const RIVAL_BASE_ANGSPEED = (Math.PI*2) / 24; // ~24s per lap baseline
-  const RIVAL_START_OFFSET = -0.25; // starts a little behind Abood
+  const RIVAL_FOLLOW_LAG = 0.35; // how far behind Abood, in radians around the track
 
   function inEllipse(x, y, a, b){
     const dx = (x - CX) / a, dy = (y - CY) / b;
@@ -239,13 +237,10 @@
   let elapsed = 0;
 
   // ---------- Rival ----------
-  let rivalProgress = RIVAL_START_OFFSET;
+  let rivalProgress = -RIVAL_FOLLOW_LAG;
   function updateRival(dt){
-    const delta = car.angleAccum - rivalProgress; // positive = Abood ahead
-    let angSpeed = RIVAL_BASE_ANGSPEED;
-    if(delta < -0.3) angSpeed *= 0.5;       // Melo got too far ahead — ease off
-    else if(delta > 1.2) angSpeed *= 1.2;   // Abood is way ahead — liven it up a little
-    rivalProgress += angSpeed * dt;
+    const target = car.angleAccum - RIVAL_FOLLOW_LAG;
+    rivalProgress += (target - rivalProgress) * Math.min(1, dt * 4);
   }
   function rivalPos(){
     const ang = START_ANGLE + rivalProgress;
@@ -298,7 +293,7 @@
   function startGame(){
     decor = buildDecor();
     car = freshCar();
-    rivalProgress = RIVAL_START_OFFSET;
+    rivalProgress = -RIVAL_FOLLOW_LAG;
     score = 0; lap = 1; elapsed = 0;
     updateHud();
     state = 'playing';
@@ -412,6 +407,21 @@
     ctx.closePath();
   }
 
+  function drawCurb(a, b){
+    ctx.save();
+    ctx.lineWidth = 10;
+    ctx.setLineDash([22, 22]);
+    ctx.lineDashOffset = 0;
+    ctx.strokeStyle = '#e0483c';
+    drawEllipsePath(a, b);
+    ctx.stroke();
+    ctx.lineDashOffset = 22;
+    ctx.strokeStyle = '#ffffff';
+    drawEllipsePath(a, b);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function drawTrack(){
     // dirt outer, grass infield
     ctx.fillStyle = '#c9a06a';
@@ -420,6 +430,10 @@
     ctx.fillStyle = '#3f9142';
     drawEllipsePath(INNER_A, INNER_B);
     ctx.fill();
+
+    // curbed borders — the walls the car bounces off
+    drawCurb(OUTER_A, OUTER_B);
+    drawCurb(INNER_A, INNER_B);
 
     // dashed centerline
     ctx.save();
