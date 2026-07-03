@@ -128,7 +128,7 @@
 
     <div class="overlay" id="start-overlay">
       <h1>🐒 Abood's Jungle Race 🐘</h1>
-      <p>Press GAS to go, and steer with ◀ ▶. Drive around the jungle track — there's no rush, and you can't crash!</p>
+      <p>Press GAS to go, and steer with ◀ ▶. Race Melo the Monkey around the jungle track — there's no rush, and you can't crash!</p>
       <button class="btn" id="play-btn">▶ Play</button>
       <p style="font-size:13px;opacity:.7;">Arrow keys / WASD + Space on a computer, or the on-screen buttons on a touch device.</p>
     </div>
@@ -179,7 +179,13 @@
   const ACCEL = 0.09;
   const COAST_FRICTION = 0.045;
   const OFFTRACK_EXTRA_FRICTION = 0.05;
-  const TURN_RATE = 0.045;
+  const TURN_RATE = 0.022;
+
+  // Rival racer — "Melo the Monkey" — a friendly AI that keeps pace nearby
+  // but is tuned to never truly beat Abood, just to make it feel like a race.
+  const RIVAL_LANE_A = TRACK_A - 70, RIVAL_LANE_B = TRACK_B - 70;
+  const RIVAL_BASE_ANGSPEED = (Math.PI*2) / 24; // ~24s per lap baseline
+  const RIVAL_START_OFFSET = -0.25; // starts a little behind Abood
 
   function inEllipse(x, y, a, b){
     const dx = (x - CX) / a, dy = (y - CY) / b;
@@ -255,6 +261,22 @@
   }
   resetProgressFlags();
 
+  // ---------- Rival ----------
+  let rivalProgress = RIVAL_START_OFFSET;
+  function updateRival(dt){
+    const delta = car.angleAccum - rivalProgress; // positive = Abood ahead
+    let angSpeed = RIVAL_BASE_ANGSPEED;
+    if(delta < -0.3) angSpeed *= 0.5;       // Melo got too far ahead — ease off
+    else if(delta > 1.2) angSpeed *= 1.2;   // Abood is way ahead — liven it up a little
+    rivalProgress += angSpeed * dt;
+  }
+  function rivalPos(){
+    const ang = START_ANGLE + rivalProgress;
+    const p = trackPoint(ang, RIVAL_LANE_A, RIVAL_LANE_B);
+    const facing = Math.atan2(RIVAL_LANE_B*Math.cos(ang), -RIVAL_LANE_A*Math.sin(ang));
+    return { x: p.x, y: p.y, angle: facing };
+  }
+
   // ---------- Gentle toast messages ----------
   const toastEl = document.getElementById('toast');
   let toastQueue = [];
@@ -318,11 +340,13 @@
   function startGame(){
     decor = buildDecor();
     car = freshCar();
+    rivalProgress = RIVAL_START_OFFSET;
     score = 0; lap = 1; elapsed = 0;
     resetProgressFlags();
     updateHud();
     state = 'playing';
     [startOverlay, winOverlay].forEach(o=>o.classList.add('hidden'));
+    toast("🐒 Here comes Melo the Monkey — let's race together!");
   }
 
   function updateHud(){
@@ -340,6 +364,8 @@
   function update(dt){
     if(state !== 'playing') return;
     elapsed += dt;
+
+    updateRival(dt);
 
     if(keys.left){ car.angle -= TURN_RATE; if(!seen.steer){ seen.steer=true; toast("Nice steering!"); } }
     if(keys.right){ car.angle += TURN_RATE; if(!seen.steer){ seen.steer=true; toast("Nice steering!"); } }
@@ -371,6 +397,15 @@
       car.speed *= 0.5;
     }
 
+    // keep tight spiraling turns from stranding the car at the exact center
+    const nearA = INNER_A * 0.35, nearB = INNER_B * 0.35;
+    if(inEllipse(car.x, car.y, nearA, nearB)){
+      const ang = Math.atan2((car.y-CY)/nearB, (car.x-CX)/nearA);
+      const p = trackPoint(ang, nearA, nearB);
+      car.x = p.x; car.y = p.y;
+      car.speed *= 0.5;
+    }
+
     // lap tracking
     const curAngle = Math.atan2((car.y-CY)/TRACK_B, (car.x-CX)/TRACK_A);
     const delta = normalizeAngle(curAngle - car.lastAngle);
@@ -397,8 +432,12 @@
     // win
     if(lapsDone >= LAPS_TO_WIN){
       state = 'win';
+      const aheadOfRival = (car.angleAccum - rivalProgress) > 0;
+      const raceLine = aheadOfRival
+        ? "You beat Melo the Monkey — what a race!"
+        : "You and Melo the Monkey crossed the line together — what a race!";
       document.getElementById('win-score').textContent =
-        `${HERO_NAME} finished ${LAPS_TO_WIN} laps and collected ${score} stars!`;
+        `${HERO_NAME} finished ${LAPS_TO_WIN} laps and collected ${score} stars! ${raceLine}`;
       showOnly(winOverlay);
     }
   }
@@ -577,6 +616,41 @@
     ctx.restore();
   }
 
+  function drawRivalCar(){
+    const r = rivalPos();
+    const p = toScreen(r.x, r.y);
+    ctx.save();
+    ctx.translate(p.sx, p.sy);
+    ctx.rotate(r.angle);
+    // shadow
+    ctx.fillStyle = 'rgba(0,0,0,.2)';
+    ctx.beginPath(); ctx.ellipse(0, 3, 18, 11, 0, 0, Math.PI*2); ctx.fill();
+    // body — banana-yellow kart
+    ctx.fillStyle = '#ffd43b';
+    ctx.beginPath();
+    ctx.moveTo(16, 0);
+    ctx.lineTo(8, -10);
+    ctx.lineTo(-14, -10);
+    ctx.lineTo(-14, 10);
+    ctx.lineTo(8, 10);
+    ctx.closePath();
+    ctx.fill();
+    // cockpit
+    ctx.fillStyle = '#5a3900';
+    ctx.beginPath(); ctx.ellipse(2, 0, 6, 6, 0, 0, Math.PI*2); ctx.fill();
+    // monkey ears peeking up
+    ctx.fillStyle = '#7a4a2e';
+    ctx.beginPath(); ctx.arc(-2, -11, 4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(6, -11, 4, 0, Math.PI*2); ctx.fill();
+    // wheels
+    ctx.fillStyle = '#222';
+    ctx.fillRect(-12, -13, 7, 4);
+    ctx.fillRect(-12, 9, 7, 4);
+    ctx.fillRect(5, -13, 7, 4);
+    ctx.fillRect(5, 9, 7, 4);
+    ctx.restore();
+  }
+
   function draw(){
     camX = car.x; camY = car.y;
     drawJungleGround();
@@ -584,6 +658,7 @@
     decor.trees.forEach(tr => drawTree(tr.x, tr.y, tr.scale, tr.sway, elapsed));
     decor.stars.forEach(s => { if(!s.taken) drawStar(s.x, s.y, elapsed); });
     decor.animals.forEach(a => drawAnimal(a, elapsed));
+    if(state==='playing' || state==='win') drawRivalCar();
     if(state==='playing' || state==='win') drawCar();
   }
 
